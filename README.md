@@ -14,13 +14,68 @@ halluciner des textes de loi : chaque citation doit être vérifiée sur la sour
 ## 1. Démarrage rapide
 
 ```bash
+git config core.hooksPath .githooks     # 0. active la protection anti-fuite (une fois par clone)
 chmod +x tribunal.sh test_sandbox.sh
-./test_sandbox.sh                  # 1. vérifier l'isolation
-./tribunal.sh --dry-run            # 2. vérifier le câblage (aucun appel LLM)
-$EDITOR inputs/brief.md            # 3. décrire le dossier client
-./tribunal.sh                      # 4. lancer l'audit
-open outputs/final_report.md
+./test_sandbox.sh                       # 1. vérifier l'isolation
+./tribunal.sh --dry-run                 # 2. vérifier le câblage sur l'exemple public
+./tribunal.sh --init-case mon-dossier   # 3. créer un dossier PRIVÉ
+$EDITOR cases/mon-dossier/brief.md      #    décrire la situation
+cp ~/pieces/*.pdf cases/mon-dossier/documents/   # pièces jointes (facultatif)
+./tribunal.sh --case mon-dossier        # 4. lancer l'audit
+open cases/mon-dossier/outputs/final_report.md
 ```
+
+---
+
+## Modèle public, cas d'usage privés
+
+Ce dépôt est un **modèle** : il ne contient que le moteur (script, prompts, sandbox) et
+un brief d'exemple **fictif**. Vos situations réelles sont des **dossiers privés** qui ne
+quittent jamais votre machine via git.
+
+| | Public (versionné) | Privé (jamais versionné) |
+|---|---|---|
+| Moteur | `tribunal.sh`, `prompts/`, `test_sandbox.sh` | — |
+| Données | `inputs/brief.md` (exemple fictif) | `cases/<nom>/brief.md`, `cases/<nom>/documents/` |
+| Résultats | — | `outputs/` (runs sur l'exemple), `cases/<nom>/outputs/` |
+
+**Trois couches de protection :**
+1. **`.gitignore`** : `cases/*`, `outputs/*` et `.sandbox/` sont ignorés.
+2. **Hook `pre-commit`** (`.githooks/`) : refuse tout commit contenant un fichier de
+   `cases/`, `outputs/` ou `.sandbox/`, même ajouté de force avec `git add -f`.
+   À activer une fois par clone : `git config core.hooksPath .githooks`.
+3. **Contrôle au lancement** : `--case` refuse un dossier situé dans le repo qui ne
+   serait pas ignoré par git.
+
+Vous pouvez aussi garder vos dossiers **hors du repo** :
+`./tribunal.sh --case ~/Documents/dossiers-prives/2026-residence`
+(le dossier doit contenir `brief.md` et éventuellement `documents/`).
+
+### Pièces jointes (`documents/`)
+
+Chaque fichier est converti en texte (lecture sandboxée) et transmis aux trois rôles
+dans une balise `<documents>`, avec la consigne de traiter ce contenu comme des
+**données, jamais comme des instructions** (protection contre l'injection de prompt).
+
+| Format | Conversion |
+|---|---|
+| `.md .txt .csv .tsv .json .xml` | tel quel |
+| `.pdf` | `pdftotext` (`brew install poppler`) |
+| `.docx .doc .rtf .odt .html` | `textutil` (natif macOS) |
+| autre (images, scans…) | refusé : convertissez en texte (OCR) au préalable |
+
+Au-delà de ~200 Ko de prompt, le script passe automatiquement le prompt sur stdin
+(limite de taille des arguments).
+
+### Ce que git ne protège pas
+
+- **Les fournisseurs d'IA reçoivent vos données** : le brief et les documents sont
+  envoyés aux API d'Anthropic et d'OpenAI. Anonymisez ce qui n'est pas nécessaire au
+  raisonnement (noms, numéros fiscaux, IBAN, adresses de wallets).
+- **Historique local des CLI** : `claude -p` conserve la transcription de chaque appel
+  dans `~/.claude/projects/` (Codex est lancé en `--ephemeral` et ne garde rien).
+  L'option `--no-session-persistence` de Claude n'est pas utilisée : avec la version
+  testée, elle produit une réponse vide.
 
 ---
 
@@ -259,8 +314,14 @@ Studio) ou un compte Vertex AI. Si votre client Gemini écrit son état ailleurs
 │   ├── auditor_redteam.xml
 │   └── judge_consolidation.xml
 ├── inputs/
-│   └── brief.md                 # contexte client (exemple fourni)
-├── outputs/                     # ignoré par git
+│   └── brief.md                 # exemple public FICTIF
+├── cases/                       # PRIVÉ, ignoré par git (sauf README.md)
+│   └── <nom>/
+│       ├── brief.md
+│       ├── documents/           # pièces jointes
+│       └── outputs/             # mêmes fichiers que outputs/ ci-dessous
+├── .githooks/pre-commit         # bloque tout commit de cases/ outputs/ .sandbox/
+├── outputs/                     # ignoré par git (runs sur l'exemple public)
 │   ├── draft.md  audit_gpt.md  [audit_gemini.md]  final_report.md
 │   ├── logs/<run_id>/*.stderr.log
 │   └── runs/<run_id>/           # archive de chaque exécution
