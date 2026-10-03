@@ -1,0 +1,7 @@
+# Sorties générées (peuvent contenir des données clients sensibles)
+outputs/*
+!outputs/.gitkeep
+*.partial
+
+# Sandbox : profil généré + TMPDIR privé
+.sandbox/
