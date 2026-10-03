@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Refuse tout commit contenant des données de dossiers clients ou des sorties d'audit.
+# Activation (une fois par clone) : git config core.hooksPath .githooks
+set -euo pipefail
+
+blocked="$(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -E '^(cases/|outputs/|\.sandbox/)' \
+  | grep -vE '^(cases/README\.md|outputs/\.gitkeep)$' || true)"
+
+if [ -n "$blocked" ]; then
+  echo "[pre-commit] REFUSÉ : ces fichiers peuvent contenir des données personnelles :" >&2
+  printf '  %s\n' $blocked >&2
+  echo "Retirez-les : git restore --staged <fichier>" >&2
+  exit 1
+fi
