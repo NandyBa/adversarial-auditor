@@ -5,3 +5,7 @@ outputs/*
 
 # Sandbox : profil généré + TMPDIR privé
 .sandbox/
+
+# Dossiers clients PRIVÉS : jamais versionnés (voir cases/README.md)
+cases/*
+!cases/README.md
